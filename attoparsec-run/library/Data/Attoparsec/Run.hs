@@ -2,8 +2,10 @@ module Data.Attoparsec.Run where
 
 import Data.Attoparsec.Types
 
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (intercalate)
-import Prelude (Either (..), Eq, Ord, Show, String, error, otherwise, null, (++))
+import Prelude (Either (..), Eq, Ord, Show, String, IO,
+          pure, error, otherwise, null, ($), ($!), (++))
 
 data FinalResult i a = FinalResult
     i -- ^ Remaining unparsed input
@@ -34,8 +36,43 @@ showParseError (ParseError context message)
 
 data BufferedInput m i = BufferedInput
     i -- ^ Initial input
-    (m i) -- ^ Should return an empty string once the end of input is reached
+    (m i) -- ^ Get the next chunk of input, or an empty string if the
+          --   end of input has been reached
 
+{-| An effectful source of parser input which supports a "restore" operation
+    that can be used to push unused portions of input back to the source
+
+For an example, see 'newRestorableIO'. -}
 data RestorableInput m i = RestorableInput
-    (m i) -- ^ Return an empty string once the end of input is reached
-    (i -> m ()) -- ^ Return a non-empty chunk of input to the input stream
+    (m i) -- ^ Get the next chunk of input, or an empty string if the
+          --   end of input has been reached
+    (i -> m ()) -- ^ Restore a non-empty chunk of input to the input stream
+
+{-| Turn any 'IO' input source into a 'RestorableInput'
+
+Internally, this is backed by an 'IORef' that holds any unparsed remainder. -}
+newRestorableIO :: IO i -> IO (RestorableInput IO i)
+newRestorableIO unbufferedGet = do
+    buffer <- newIORef [] -- The buffer stores the unparsed inputs
+                          -- that have pushed back by "restore".
+    pure $ RestorableInput (get buffer) (restore buffer)
+
+  where
+    -- Restoring writes an input chunk to the top of the stack.
+    restore buffer x = do
+        xs <- readIORef buffer
+        writeIORef buffer $! (x : xs)
+
+    get buffer = do
+        bufferContent <- readIORef buffer
+        case bufferContent of
+
+            -- If the buffer is empty, then "get" just runs the action.
+            [] -> unbufferedGet
+
+            -- If there is content that has been pushed back onto the
+            -- buffer, then "get" pops a chunk off of the stack instead
+            -- of running the action.
+            (x : xs) -> do
+                writeIORef buffer $! xs
+                pure x
