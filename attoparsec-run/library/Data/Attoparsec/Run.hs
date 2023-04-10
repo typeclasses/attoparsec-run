@@ -4,8 +4,10 @@ import Data.Attoparsec.Types
 
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.List (intercalate)
-import Prelude (Either (..), Eq, Ord, Show, String, IO,
+import Prelude (Either (..), Eq, Ord, Show, String, IO, Monoid, mempty,
           pure, error, otherwise, null, ($), ($!), (++))
+import Control.Monad.State (MonadState)
+import qualified Control.Monad.State as State
 
 data FinalResult i a = FinalResult
     i -- ^ Remaining unparsed input
@@ -76,3 +78,18 @@ newRestorableIO unbufferedGet = do
             (x : xs) -> do
                 writeIORef buffer $! xs
                 pure x
+
+{-| A 'RestorableInput' in which getting and restoring are both backed
+    by 'MonadState' operations. -}
+inputState :: (Monoid i, MonadState [i] m) => RestorableInput m i
+inputState = RestorableInput get restore
+  where
+    get = do
+        xs <- State.get
+        case xs of
+            [] -> pure mempty
+            (x : xs') -> do
+                State.put xs'
+                pure x
+
+    restore x = State.modify' (x :)
