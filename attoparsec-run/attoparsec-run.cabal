@@ -21,7 +21,7 @@ author: Chris Martin
 maintainer: Chris Martin, Julie Moronuki
 
 homepage: https://github.com/typeclasses/attoparsec-run
-bug-Reports: https://github.com/typeclasses/attoparsec-run/issues
+bug-reports: https://github.com/typeclasses/attoparsec-run/issues
 
 extra-source-files: *.md
 
